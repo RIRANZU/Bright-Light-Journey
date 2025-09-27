@@ -1,0 +1,79 @@
+-- Finding the max and min record date to help be when i join my tables 
+select max(RecordDate2) as max_recorddate, min(RecordDate2) as min_recorddate
+from workspace.BrightTv.viewership;
+
+--Finding min and max duration to assist me with creating a Case statement that will be guaging the rating points and seeing whether people are engaging with the content or not
+select max(Duration2) as max_duration, min(Duration2) as min_duration
+from workspace.BrightTv.viewership;
+
+--Making use of cte's
+
+with cte_userprofiles as (
+    select 
+        userid,
+        Name, 
+        Surname, 
+        Email, 
+        Gender, 
+        Race, 
+        Age, 
+        Province, 
+        round(
+            count(userid) over (partition by Gender) * 100.0 
+            / count(userid) over (), 
+            2
+        ) as GenderPrecentage
+    from workspace.BrightTv.userprofiles
+),
+cte_viewership as (
+    select
+        userid,
+        Channel2,
+        RecordDate2,
+        Duration2,
+
+        -- Extract minutes from timestamp (hours*60 + minutes)
+        (extract(hour from Duration2) * 60 
+         + extract(minute from Duration2) 
+         + extract(second from Duration2)/60.0) as DurationMinutes
+    from workspace.BrightTv.viewership
+)
+select
+    a.Name, 
+    a.Surname, 
+    a.Gender, 
+    a.Race, 
+    a.Age, 
+    a.Province, 
+    a.GenderPrecentage,
+    b.Channel2, 
+    b.DurationMinutes,
+
+    -- Classify record date
+    case 
+        when b.RecordDate2 between '2016/01/01 00:32' and '2016/01/31 07:00' 
+            then 'Early'
+        when b.RecordDate2 between '2016/02/01 07:01' and '2016/02/01 14:33' 
+            then 'Right on time'
+        else 'Late'
+    end as time_category,
+
+    -- Rating points based on minutes watched
+    case 
+        when b.DurationMinutes < 1 then 1          -- < 1 min
+        when b.DurationMinutes < 5 then 2          -- 1–5 min
+        when b.DurationMinutes < 15 then 3         -- 5–15 min
+        when b.DurationMinutes < 60 then 4         -- 15–60 min
+        else 5                                      -- > 60 min
+    end as rating_points,
+
+    -- Engagement level from minutes watched
+    case 
+        when b.DurationMinutes < 5 then 'Low'         -- < 5 min
+        when b.DurationMinutes < 30 then 'Moderate'   -- 5–30 min
+        else 'High'                                    -- > 30 min
+    end as engagement_level
+
+from cte_userprofiles as a
+join cte_viewership as b
+    on a.userid = b.userid;
